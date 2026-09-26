@@ -3,8 +3,23 @@ set -euo pipefail
 
 branch=$(git symbolic-ref --short HEAD)
 
-if [[ "$branch" == "master" ]]; then
-  echo "Already on master — nothing to merge." >&2
+# Default branch: origin's HEAD if known, otherwise whichever of main/master exists locally.
+main_branch=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||' || true)
+if [[ -z "$main_branch" ]]; then
+  for candidate in main master; do
+    if git show-ref --verify --quiet "refs/heads/$candidate"; then
+      main_branch=$candidate
+      break
+    fi
+  done
+fi
+if [[ -z "$main_branch" ]]; then
+  echo "Could not find a 'main' or 'master' branch." >&2
+  exit 1
+fi
+
+if [[ "$branch" == "$main_branch" ]]; then
+  echo "Already on $main_branch — nothing to merge." >&2
   exit 1
 fi
 
@@ -13,9 +28,9 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   exit 1
 fi
 
-git switch master
+git switch "$main_branch"
 git merge --no-ff "$branch"
-git push origin master
+git push origin "$main_branch"
 
 echo "Merged and pushed — cleaning up '$branch'..."
 git branch -D "$branch"
